@@ -38,7 +38,9 @@ func NewSnippet() *Snippet {
 	return snippet
 }
 
-func GetSnippetsFromFile(file *os.File) []*Snippet {
+type snippetFilter func(snippet *Snippet) bool
+
+func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
 	snippets := make([]*Snippet, 0)
 	snippet := NewSnippet()
 
@@ -68,7 +70,9 @@ func GetSnippetsFromFile(file *os.File) []*Snippet {
 				// new snippet
 				currentState = FM
 				snippet.Source = sourceBuffer.String()
-				snippets = append(snippets, snippet)
+				if filter(snippet) {
+					snippets = append(snippets, snippet)
+				}
 
 				snippet = NewSnippet()
 			} else {
@@ -79,7 +83,12 @@ func GetSnippetsFromFile(file *os.File) []*Snippet {
 	}
 
 	snippet.Source = sourceBuffer.String()
-	return append(snippets, snippet)
+
+	if filter(snippet){
+		snippets = append(snippets, snippet)
+	}
+
+	return snippets
 }
 
 func isFrontMatterString(s string) bool {
@@ -92,7 +101,10 @@ func main() {
 		panic(e)
 	}
 
-	snippets := GetSnippetsFromFile(file)
+	snippets := GetSnippetsFromFile(file, func(snippet *Snippet) bool {
+		return snippet.getVar("language") != "" && snippet.getVar("language") == "java"
+	})
+
 
 	fmt.Println("Found snippetcount: ", len(snippets))
 
