@@ -1,0 +1,23 @@
+---
+language: java
+description: A Test Snippet
+---
+func main() {
+	file, e := os.Open("/Users/tlongo/go/src/snippetserver/testfiles/test.snipe")
+	if e != nil {
+		panic(e)
+	}
+
+	snippet := NewSnippet(file)
+
+	fmt.Println(snippet.Source)
+	fmt.Println(snippet.getVar("language"))
+}
+
+---
+language: go
+description: Another Test Snippet
+---
+func isFrontMatterString(s string) bool {
+	return strings.HasPrefix(s, "---")
+}
