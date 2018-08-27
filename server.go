@@ -112,8 +112,9 @@ func main() {
 
 	flag.Parse()
 
+	snippetFolder := os.Getenv("SNIPES")
 	snippets := make([]*Snippet, 0)
-	filepath.Walk("/Users/tlongo/go/src/snippetserver/testfiles", func(path string, f os.FileInfo, err error) error {
+	filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
 		if f.Name() == *exclude {
 			return nil
 		}
