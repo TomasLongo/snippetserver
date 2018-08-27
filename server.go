@@ -6,6 +6,7 @@ import (
 	"strings"
 	"fmt"
 	"bytes"
+	"flag"
 )
 
 type Snippet struct {
@@ -54,7 +55,6 @@ func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
 			}
 		} else if currentState == FM {
 			if isFrontMatterString(trimmed) {
-				fmt.Println("PRocessing source")
 				currentState = SOURCE
 				sourceBuffer.Reset()
 			} else {
@@ -95,18 +95,24 @@ func isFrontMatterString(s string) bool {
 	return strings.HasPrefix(s, "---")
 }
 
+func languageFilter(language string) snippetFilter {
+	return func(snippet *Snippet) bool {
+		return snippet.getVar("language") != "" && snippet.getVar("language") == language
+	}
+}
+
 func main() {
 	file, e := os.Open("/Users/tlongo/go/src/snippetserver/testfiles/test.snipe")
+	defer file.Close()
 	if e != nil {
 		panic(e)
 	}
 
-	snippets := GetSnippetsFromFile(file, func(snippet *Snippet) bool {
-		return snippet.getVar("language") != "" && snippet.getVar("language") == "java"
-	})
+	language := flag.String("lang", "", "the language to filter for")
 
+	flag.Parse()
 
-	fmt.Println("Found snippetcount: ", len(snippets))
+	snippets := GetSnippetsFromFile(file, languageFilter(*language))
 
 	for _, snippet := range snippets {
 		fmt.Println(snippet.Source)
