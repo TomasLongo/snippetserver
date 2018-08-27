@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"bytes"
 	"flag"
+	"path/filepath"
 )
 
 type Snippet struct {
@@ -48,7 +49,8 @@ func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
 	scanner := bufio.NewScanner(file)
 
 	for scanner.Scan() {
-		trimmed := strings.Trim(scanner.Text(), " ")
+		untrimmed := scanner.Text()
+		trimmed := strings.Trim(untrimmed, " ")
 		if currentState == START {
 			if isFrontMatterString(trimmed) {
 				currentState = FM
@@ -76,7 +78,7 @@ func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
 
 				snippet = NewSnippet()
 			} else {
-				sourceBuffer.WriteString(trimmed)
+				sourceBuffer.WriteString(untrimmed)
 				sourceBuffer.WriteString("\n")
 			}
 		}
@@ -97,23 +99,37 @@ func isFrontMatterString(s string) bool {
 
 func languageFilter(language string) snippetFilter {
 	return func(snippet *Snippet) bool {
+		if language == "" {
+			return true
+		}
 		return snippet.getVar("language") != "" && snippet.getVar("language") == language
 	}
 }
 
 func main() {
-	file, e := os.Open("/Users/tlongo/go/src/snippetserver/testfiles/test.snipe")
-	defer file.Close()
-	if e != nil {
-		panic(e)
-	}
-
 	language := flag.String("lang", "", "the language to filter for")
+	exclude := flag.String("x", "", "the file, that should be excluded")
 
 	flag.Parse()
 
-	snippets := GetSnippetsFromFile(file, languageFilter(*language))
+	snippets := make([]*Snippet, 0)
+	filepath.Walk("/Users/tlongo/go/src/snippetserver/testfiles", func(path string, f os.FileInfo, err error) error {
+		if f.Name() == *exclude {
+			return nil
+		}
+		if !f.IsDir() && strings.HasSuffix(path, ".snipe") {
+			fmt.Println("Parsing ", path, " for snippets")
+			file, e := os.Open(path)
+			defer file.Close()
+			if e != nil {
+				panic(e)
+			}
+			snippets = append(snippets, GetSnippetsFromFile(file, languageFilter(*language))...)
+		}
+		return nil
+	})
 
+	fmt.Println("Found: ", len(snippets), " snippets")
 	for _, snippet := range snippets {
 		fmt.Println(snippet.Source)
 	}
