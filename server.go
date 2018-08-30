@@ -119,7 +119,6 @@ func main() {
 			return nil
 		}
 		if !f.IsDir() && strings.HasSuffix(path, ".snipe") {
-			fmt.Println("Parsing ", path, " for snippets")
 			file, e := os.Open(path)
 			defer file.Close()
 			if e != nil {
@@ -130,7 +129,6 @@ func main() {
 		return nil
 	})
 
-	fmt.Println("Found: ", len(snippets), " snippets")
 	for _, snippet := range snippets {
 		fmt.Println(snippet.Source)
 	}
