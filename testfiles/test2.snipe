@@ -6,3 +6,19 @@ if (i === undefined) {
     return 1
 }
 
+---
+language: go
+description: walk a directory
+tags: traversal,directory
+---
+filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
+    if !f.IsDir() && strings.HasSuffix(path, ".snipe") {
+        file, e := os.Open(path)
+        defer file.Close()
+        if e != nil {
+            panic(e)
+        }
+        snippets = append(snippets, GetSnippetsFromFile(file, languageFilter(*language))...)
+    }
+    return nil
+})

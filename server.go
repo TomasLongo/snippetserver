@@ -106,14 +106,35 @@ func languageFilter(language string) snippetFilter {
 	}
 }
 
+func tagFilter(filtertag string) snippetFilter {
+	return func(snippet *Snippet) bool {
+		tags := snippet.getVar("tags")
+		for _, tag := range strings.Split(tags, ",") {
+			if filtertag == tag {
+				return true
+			}
+		}
+
+		return false
+	}
+}
+
 func main() {
 	language := flag.String("lang", "", "the language to filter for")
 	exclude := flag.String("x", "", "the file, that should be excluded")
+	tags := flag.String("tag", "", "the tag to filter for")
 
 	flag.Parse()
 
 	snippetFolder := os.Getenv("SNIPES")
 	snippets := make([]*Snippet, 0)
+
+	filterfunc := func(snippet *Snippet) bool { return true}
+	if (*language != "") {
+		filterfunc = languageFilter(*language)
+	} else if *tags != "" {
+		filterfunc = tagFilter(*tags)
+	}
 	filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
 		if f.Name() == *exclude {
 			return nil
@@ -124,7 +145,7 @@ func main() {
 			if e != nil {
 				panic(e)
 			}
-			snippets = append(snippets, GetSnippetsFromFile(file, languageFilter(*language))...)
+			snippets = append(snippets, GetSnippetsFromFile(file, filterfunc)...)
 		}
 		return nil
 	})
