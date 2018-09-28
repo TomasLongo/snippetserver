@@ -1,6 +1,7 @@
 ---
 language: javascript
 description: A Test Snippet
+tags: go
 ---
 if (i === undefined) {
     return 1
@@ -9,7 +10,7 @@ if (i === undefined) {
 ---
 language: go
 description: walk a directory
-tags: traversal,directory
+tags: traversal,directory,go
 ---
 filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
     if !f.IsDir() && strings.HasSuffix(path, ".snipe") {
