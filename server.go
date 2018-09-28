@@ -106,12 +106,15 @@ func languageFilter(language string) snippetFilter {
 	}
 }
 
-func tagFilter(filtertag string) snippetFilter {
+func tagFilter(filtertags []string) snippetFilter {
 	return func(snippet *Snippet) bool {
 		tags := snippet.getVar("tags")
+		// Implement OR-Logic
 		for _, tag := range strings.Split(tags, ",") {
-			if filtertag == tag {
-				return true
+			for _, filterTag := range filtertags {
+				if filterTag == tag {
+					return true
+				}
 			}
 		}
 
@@ -130,10 +133,10 @@ func main() {
 	snippets := make([]*Snippet, 0)
 
 	filterfunc := func(snippet *Snippet) bool { return true}
-	if (*language != "") {
+	if *language != "" {
 		filterfunc = languageFilter(*language)
 	} else if *tags != "" {
-		filterfunc = tagFilter(*tags)
+		filterfunc = tagFilter(strings.Split(*tags, ","))
 	}
 	filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
 		if f.Name() == *exclude {
