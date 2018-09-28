@@ -108,8 +108,7 @@ func languageFilter(language string) snippetFilter {
 
 func filterChain(filters []snippetFilter) snippetFilter {
 	return func(snippet *Snippet) bool {
-		for i, filter := range filters {
-			fmt.Println("Checking", i)
+		for _, filter := range filters {
 			if filter(snippet) == false {
 				return false
 			}
@@ -139,6 +138,7 @@ func main() {
 	language := flag.String("lang", "", "the language to filter for")
 	exclude := flag.String("x", "", "the file, that should be excluded")
 	tags := flag.String("tag", "", "the tag to filter for")
+	file := flag.String("file", "n/a", "the file to write the snippet to")
 
 	flag.Parse()
 
@@ -168,6 +168,18 @@ func main() {
 		}
 		return nil
 	})
+
+	if *file != "n/a" && len(snippets) > 1 {
+		fmt.Println("Can not write snippet to file. More than 1 snippet found")
+		return
+	}
+
+	if *file != "n/a" {
+		fs,_ := os.Create(*file)
+		defer fs.Close()
+		fs.WriteString(snippets[0].Source)
+		return
+	}
 
 	for _, snippet := range snippets {
 		fmt.Println(snippet.Source)
