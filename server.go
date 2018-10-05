@@ -8,11 +8,32 @@ import (
 	"bytes"
 	"flag"
 	"path/filepath"
+	"crypto/sha256"
+	"time"
+	"encoding/base64"
+	"strconv"
+	"io"
 )
 
 type Snippet struct {
 	Source string
 	variables map[string]string
+}
+
+func (s *Snippet) String() string {
+	buffer := new(bytes.Buffer)
+	buffer.WriteString("---\n")
+	for k, v := range s.variables {
+		buffer.WriteString(k)
+		buffer.WriteString(": ")
+		buffer.WriteString(v)
+		buffer.WriteString("\n")
+	}
+	buffer.WriteString("---\n")
+	buffer.WriteString(s.Source)
+	buffer.WriteString("\n")
+
+	return buffer.String()
 }
 
 func (s *Snippet)addVar(key string, value string) {
@@ -134,6 +155,23 @@ func tagFilter(filtertags []string) snippetFilter {
 	}
 }
 
+func processIDs(snippets []*Snippet) bool {
+	fmt.Println("processing ids")
+	processed := false
+	for _, snippet := range snippets {
+		if snippet.getVar("id") == "" {
+			fmt.Println("found snippet without id")
+			processed = true
+			nano := time.Now().UnixNano()
+			sum256 := sha256.Sum256([]byte(strconv.FormatInt(nano, 10)))
+			idstring := base64.URLEncoding.EncodeToString(sum256[:])
+			snippet.addVar("id", idstring)
+		}
+	}
+
+	return processed
+}
+
 func main() {
 	language := flag.String("lang", "", "the language to filter for")
 	exclude := flag.String("x", "", "the file, that should be excluded")
@@ -164,7 +202,34 @@ func main() {
 			if e != nil {
 				panic(e)
 			}
-			snippets = append(snippets, GetSnippetsFromFile(file, filterChain(filters))...)
+			snippetsInFile := GetSnippetsFromFile(file, filterChain(filters))
+			if processIDs(snippetsInFile) == true {
+				// backup current snipes file
+				backupFile, _ := os.Create(path + ".bk")
+				file.Seek(0, io.SeekStart)
+				_, bkCreateError := io.Copy(backupFile, file)
+				if  bkCreateError != nil {
+					panic(bkCreateError)
+				}
+				backupFile.Sync()
+				backupFile.Close()
+
+				// rm old snipes file
+				file.Close()
+				os.Remove(path)
+
+				// Write new snipes file with ids
+				newFile, err := os.Create(path)
+				if err != nil {
+					panic(err)
+				}
+				for _, snippet := range snippetsInFile {
+					newFile.WriteString(snippet.String())
+				}
+				newFile.Sync()
+				newFile.Close()
+			}
+			snippets = append(snippets, snippetsInFile...)
 		}
 		return nil
 	})
