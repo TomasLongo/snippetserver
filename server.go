@@ -139,6 +139,13 @@ func filterChain(filters []snippetFilter) snippetFilter {
 	}
 }
 
+func idFilter(id string) snippetFilter {
+	return func(snippet *Snippet) bool {
+		snippetID := snippet.getVar("id")
+		return snippetID != "" && snippetID == id
+	}
+}
+
 func tagFilter(filtertags []string) snippetFilter {
 	return func(snippet *Snippet) bool {
 		tags := snippet.getVar("tags")
@@ -156,7 +163,6 @@ func tagFilter(filtertags []string) snippetFilter {
 }
 
 func processIDs(snippets []*Snippet) bool {
-	fmt.Println("processing ids")
 	processed := false
 	for _, snippet := range snippets {
 		if snippet.getVar("id") == "" {
@@ -177,6 +183,7 @@ func main() {
 	exclude := flag.String("x", "", "the file, that should be excluded")
 	tags := flag.String("tag", "", "the tag to filter for")
 	file := flag.String("file", "n/a", "the file to write the snippet to")
+	id := flag.String("id", "", "the id of the snippet")
 
 	flag.Parse()
 
@@ -185,13 +192,20 @@ func main() {
 
 	filters := make([]snippetFilter, 0)
 
+	// default filter
 	filters = append(filters, func(snippet *Snippet) bool { return true })
-	if *language != "" {
-		filters = append(filters, languageFilter(*language))
+
+	if *id != "" {
+		filters = append(filters, idFilter(*id))
+	} else {
+		if *language != "" {
+			filters = append(filters, languageFilter(*language))
+		}
+		if *tags != "" {
+			filters = append(filters, tagFilter(strings.Split(*tags, ",")))
+		}
 	}
-	if *tags != "" {
-		filters = append(filters, tagFilter(strings.Split(*tags, ",")))
-	}
+
 	filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
 		if f.Name() == *exclude {
 			return nil
@@ -246,7 +260,11 @@ func main() {
 		return
 	}
 
+	multipleSnippets := len(snippets) > 0
 	for _, snippet := range snippets {
+		if multipleSnippets {
+			fmt.Printf("[%s]\n", snippet.getVar("id"))
+		}
 		fmt.Println(snippet.Source)
 	}
 }
