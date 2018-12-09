@@ -178,17 +178,120 @@ func processIDs(snippets []*Snippet) bool {
 	return processed
 }
 
+// createLastSearchFile creates a file. Destination is `snipesserverDir`.
+// The created file acts as a buffer and holds the snippetIDs that where found in the
+// last invocation of the snippetserver. For multiple found snippets, it will create
+// a line for every found snippet in the followign form:
+// <nr>: <snippet-ID>
+func createLastSearchFile(snipes []*Snippet, snipesserverDir string) {
+	lastSearchFile := snipesserverDir + "/.last"
+	os.Remove(lastSearchFile)
+
+	file, _ := os.Create(lastSearchFile)
+	for i, snippet := range snipes {
+		io.WriteString(file, strconv.Itoa(i+1) + ": " +  snippet.getVar("id") + "\n")
+	}
+}
+
+// getSnippetFromLastSearch queries the `lastSearch` file.
+// the client provides the number of the snippet-id, she wants to get
+func getSnippetFromLastSearch(nr int) *Snippet {
+	file, _ := os.Open(os.Getenv("HOME") + "/.snipeserver/.last")
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		split := strings.Split(scanner.Text(), ":")
+		i, _ := strconv.Atoi(split[0])
+		if i == nr {
+			snippets := snippetFinder(idFilter(strings.Trim(split[1], " ")), "")
+			return snippets[0]
+		}
+	}
+
+	return nil
+}
+
+func snippetFinder(filter snippetFilter, excludeFile string) []*Snippet {
+	snippetFolder := os.Getenv("SNIPES")
+	snippets := make([]*Snippet, 0)
+	e := filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
+		if f.Name() == excludeFile {
+			return nil
+		}
+		if !f.IsDir() && strings.HasSuffix(path, ".snipe") {
+			file, e := os.Open(path)
+			defer file.Close()
+			if e != nil {
+				panic(e)
+			}
+			snippetsInFile := GetSnippetsFromFile(file, filter)
+			if processIDs(snippetsInFile) == true {
+				// backup current snipes file
+				backupFile, _ := os.Create(path + ".bk")
+				file.Seek(0, io.SeekStart)
+				_, bkCreateError := io.Copy(backupFile, file)
+				if bkCreateError != nil {
+					panic(bkCreateError)
+				}
+				backupFile.Sync()
+				backupFile.Close()
+
+				// rm old snipes file
+				file.Close()
+				os.Remove(path)
+
+				// Write new snipes file with ids
+				// TODO: This is FATAL for it will populate the snipes file with found snipes *only*
+				// We have to somehow inject the id into the present snipes file. Maybe while processing the IDs??
+				newFile, err := os.Create(path)
+				if err != nil {
+					panic(err)
+				}
+				for _, snippet := range snippetsInFile {
+					newFile.WriteString(snippet.String())
+				}
+				newFile.Sync()
+				newFile.Close()
+			}
+			snippets = append(snippets, snippetsInFile...)
+		}
+		return nil
+	})
+
+	if e != nil {
+		panic(fmt.Sprintf("Could not walk %s. Error: \n%s", snippetFolder, e.Error()))
+	}
+
+	return snippets
+}
+
 func main() {
 	language := flag.String("lang", "", "the language to filter for")
 	exclude := flag.String("x", "", "the file, that should be excluded")
 	tags := flag.String("tag", "", "the tag to filter for")
 	file := flag.String("file", "n/a", "the file to write the snippet to")
 	id := flag.String("id", "", "the id of the snippet")
+	nr := flag.String("nr", "", "the number from the last search to display")
 
 	flag.Parse()
 
-	snippetFolder := os.Getenv("SNIPES")
-	snippets := make([]*Snippet, 0)
+	if len(flag.Args()) > 0 {
+		// positional arg
+		if flag.Args()[0] == "last" {
+			i, _ := strconv.Atoi(*nr)
+			snippet := getSnippetFromLastSearch(i)
+			fmt.Println(snippet.Source)
+			return
+		}
+	}
+
+	// create snipesserver dir in users home if needed
+	snipeserverDir := os.Getenv("HOME") + "/.snipeserver"
+	_, e := os.Stat(snipeserverDir)
+	if os.IsNotExist(e) {
+		os.Mkdir(snipeserverDir, os.ModePerm)
+	}
 
 	filters := make([]snippetFilter, 0)
 
@@ -206,47 +309,7 @@ func main() {
 		}
 	}
 
-	filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
-		if f.Name() == *exclude {
-			return nil
-		}
-		if !f.IsDir() && strings.HasSuffix(path, ".snipe") {
-			file, e := os.Open(path)
-			defer file.Close()
-			if e != nil {
-				panic(e)
-			}
-			snippetsInFile := GetSnippetsFromFile(file, filterChain(filters))
-			if processIDs(snippetsInFile) == true {
-				// backup current snipes file
-				backupFile, _ := os.Create(path + ".bk")
-				file.Seek(0, io.SeekStart)
-				_, bkCreateError := io.Copy(backupFile, file)
-				if  bkCreateError != nil {
-					panic(bkCreateError)
-				}
-				backupFile.Sync()
-				backupFile.Close()
-
-				// rm old snipes file
-				file.Close()
-				os.Remove(path)
-
-				// Write new snipes file with ids
-				newFile, err := os.Create(path)
-				if err != nil {
-					panic(err)
-				}
-				for _, snippet := range snippetsInFile {
-					newFile.WriteString(snippet.String())
-				}
-				newFile.Sync()
-				newFile.Close()
-			}
-			snippets = append(snippets, snippetsInFile...)
-		}
-		return nil
-	})
+	snippets := snippetFinder(filterChain(filters), *exclude)
 
 	if *file != "n/a" && len(snippets) > 1 {
 		fmt.Println("Can not write snippet to file. More than 1 snippet found")
@@ -267,4 +330,6 @@ func main() {
 		}
 		fmt.Println(snippet.Source)
 	}
+
+	createLastSearchFile(snippets, snipeserverDir)
 }
