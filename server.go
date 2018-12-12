@@ -2,70 +2,35 @@ package main
 
 import (
 	"bufio"
-	"os"
-	"strings"
-	"fmt"
 	"bytes"
-	"flag"
-	"path/filepath"
 	"crypto/sha256"
-	"time"
 	"encoding/base64"
-	"strconv"
+	"flag"
+	"fmt"
 	"io"
+	"os"
+	"path/filepath"
+	"snippetserver/filters"
+	"snippetserver/snippet"
+	"strconv"
+	"strings"
+	"time"
 )
 
-type Snippet struct {
-	Source string
-	variables map[string]string
-}
-
-func (s *Snippet) String() string {
-	buffer := new(bytes.Buffer)
-	buffer.WriteString("---\n")
-	for k, v := range s.variables {
-		buffer.WriteString(k)
-		buffer.WriteString(": ")
-		buffer.WriteString(v)
-		buffer.WriteString("\n")
-	}
-	buffer.WriteString("---\n")
-	buffer.WriteString(s.Source)
-	buffer.WriteString("\n")
-
-	return buffer.String()
-}
-
-func (s *Snippet)addVar(key string, value string) {
-	s.variables[key] = value
-}
-
-func (s *Snippet)getVar(key string) string {
-	return s.variables[key]
-}
-
 type State int
+
 const (
-	FM State = 1
+	FM     State = 1
 	SOURCE State = 2
-	START State = 3
+	START  State = 3
 )
 
 var currentState = START
 var sourceBuffer = new(bytes.Buffer)
 
-func NewSnippet() *Snippet {
-	snippet := new(Snippet)
-	snippet.variables = make(map[string]string)
-
-	return snippet
-}
-
-type snippetFilter func(snippet *Snippet) bool
-
-func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
-	snippets := make([]*Snippet, 0)
-	snippet := NewSnippet()
+func GetSnippetsFromFile(file *os.File, filter filters.SnippetFilter) []*snippet.Snippet {
+	snippets := make([]*snippet.Snippet, 0)
+	snip := snippet.NewSnippet()
 
 	scanner := bufio.NewScanner(file)
 
@@ -86,18 +51,18 @@ func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
 				key := strings.Trim(tokens[0], " ")
 				value := strings.Trim(tokens[1], " ")
 
-				snippet.addVar(key, value)
+				snip.AddVar(key, value)
 			}
 		} else if currentState == SOURCE {
 			if isFrontMatterString(trimmed) {
-				// new snippet
+				// new snip
 				currentState = FM
-				snippet.Source = sourceBuffer.String()
-				if filter(snippet) {
-					snippets = append(snippets, snippet)
+				snip.Source = sourceBuffer.String()
+				if filter(snip) {
+					snippets = append(snippets, snip)
 				}
 
-				snippet = NewSnippet()
+				snip = snippet.NewSnippet()
 			} else {
 				sourceBuffer.WriteString(untrimmed)
 				sourceBuffer.WriteString("\n")
@@ -105,10 +70,10 @@ func GetSnippetsFromFile(file *os.File, filter snippetFilter) []*Snippet {
 		}
 	}
 
-	snippet.Source = sourceBuffer.String()
+	snip.Source = sourceBuffer.String()
 
-	if filter(snippet){
-		snippets = append(snippets, snippet)
+	if filter(snip) {
+		snippets = append(snippets, snip)
 	}
 
 	return snippets
@@ -118,60 +83,16 @@ func isFrontMatterString(s string) bool {
 	return strings.HasPrefix(s, "---")
 }
 
-func languageFilter(language string) snippetFilter {
-	return func(snippet *Snippet) bool {
-		if language == "" {
-			return true
-		}
-		return snippet.getVar("language") != "" && snippet.getVar("language") == language
-	}
-}
-
-func filterChain(filters []snippetFilter) snippetFilter {
-	return func(snippet *Snippet) bool {
-		for _, filter := range filters {
-			if filter(snippet) == false {
-				return false
-			}
-		}
-
-		return true
-	}
-}
-
-func idFilter(id string) snippetFilter {
-	return func(snippet *Snippet) bool {
-		snippetID := snippet.getVar("id")
-		return snippetID != "" && snippetID == id
-	}
-}
-
-func tagFilter(filtertags []string) snippetFilter {
-	return func(snippet *Snippet) bool {
-		tags := snippet.getVar("tags")
-		// Implement OR-Logic
-		for _, tag := range strings.Split(tags, ",") {
-			for _, filterTag := range filtertags {
-				if filterTag == tag {
-					return true
-				}
-			}
-		}
-
-		return false
-	}
-}
-
-func processIDs(snippets []*Snippet) bool {
+func processIDs(snippets []*snippet.Snippet) bool {
 	processed := false
 	for _, snippet := range snippets {
-		if snippet.getVar("id") == "" {
+		if snippet.GetVar("id") == "" {
 			fmt.Println("found snippet without id")
 			processed = true
 			nano := time.Now().UnixNano()
 			sum256 := sha256.Sum256([]byte(strconv.FormatInt(nano, 10)))
 			idstring := base64.URLEncoding.EncodeToString(sum256[:])
-			snippet.addVar("id", idstring)
+			snippet.AddVar("id", idstring)
 		}
 	}
 
@@ -183,19 +104,19 @@ func processIDs(snippets []*Snippet) bool {
 // last invocation of the snippetserver. For multiple found snippets, it will create
 // a line for every found snippet in the followign form:
 // <nr>: <snippet-ID>
-func createLastSearchFile(snipes []*Snippet, snipesserverDir string) {
+func createLastSearchFile(snipes []*snippet.Snippet, snipesserverDir string) {
 	lastSearchFile := snipesserverDir + "/.last"
 	os.Remove(lastSearchFile)
 
 	file, _ := os.Create(lastSearchFile)
 	for i, snippet := range snipes {
-		io.WriteString(file, strconv.Itoa(i+1) + ": " +  snippet.getVar("id") + "\n")
+		io.WriteString(file, strconv.Itoa(i+1)+": "+snippet.GetVar("id")+"\n")
 	}
 }
 
 // getSnippetFromLastSearch queries the `lastSearch` file.
 // the client provides the number of the snippet-id, she wants to get
-func getSnippetFromLastSearch(nr int) *Snippet {
+func getSnippetFromLastSearch(nr int) *snippet.Snippet {
 	file, _ := os.Open(os.Getenv("HOME") + "/.snipeserver/.last")
 
 	scanner := bufio.NewScanner(file)
@@ -204,17 +125,16 @@ func getSnippetFromLastSearch(nr int) *Snippet {
 		split := strings.Split(scanner.Text(), ":")
 		i, _ := strconv.Atoi(split[0])
 		if i == nr {
-			snippets := snippetFinder(idFilter(strings.Trim(split[1], " ")), "")
+			snippets := snippetFinder(filters.IdFilter(strings.Trim(split[1], " ")), "")
 			return snippets[0]
 		}
 	}
-
 	return nil
 }
 
-func snippetFinder(filter snippetFilter, excludeFile string) []*Snippet {
+func snippetFinder(filter filters.SnippetFilter, excludeFile string) []*snippet.Snippet {
 	snippetFolder := os.Getenv("SNIPES")
-	snippets := make([]*Snippet, 0)
+	snippets := make([]*snippet.Snippet, 0)
 	e := filepath.Walk(snippetFolder, func(path string, f os.FileInfo, err error) error {
 		if f.Name() == excludeFile {
 			return nil
@@ -293,23 +213,23 @@ func main() {
 		os.Mkdir(snipeserverDir, os.ModePerm)
 	}
 
-	filters := make([]snippetFilter, 0)
+	filterFunctions := make([]filters.SnippetFilter, 0)
 
 	// default filter
-	filters = append(filters, func(snippet *Snippet) bool { return true })
+	filterFunctions = append(filterFunctions, func(snippet *snippet.Snippet) bool { return true })
 
 	if *id != "" {
-		filters = append(filters, idFilter(*id))
+		filterFunctions = append(filterFunctions, filters.IdFilter(*id))
 	} else {
 		if *language != "" {
-			filters = append(filters, languageFilter(*language))
+			filterFunctions = append(filterFunctions, filters.LanguageFilter(*language))
 		}
 		if *tags != "" {
-			filters = append(filters, tagFilter(strings.Split(*tags, ",")))
+			filterFunctions = append(filterFunctions, filters.TagFilter(strings.Split(*tags, ",")))
 		}
 	}
 
-	snippets := snippetFinder(filterChain(filters), *exclude)
+	snippets := snippetFinder(filters.FilterChain(filterFunctions), *exclude)
 
 	if *file != "n/a" && len(snippets) > 1 {
 		fmt.Println("Can not write snippet to file. More than 1 snippet found")
@@ -317,7 +237,7 @@ func main() {
 	}
 
 	if *file != "n/a" {
-		fs,_ := os.Create(*file)
+		fs, _ := os.Create(*file)
 		defer fs.Close()
 		fs.WriteString(snippets[0].Source)
 		return
@@ -326,7 +246,7 @@ func main() {
 	multipleSnippets := len(snippets) > 0
 	for _, snippet := range snippets {
 		if multipleSnippets {
-			fmt.Printf("[%s]\n", snippet.getVar("id"))
+			fmt.Printf("[%s]\n", snippet.GetVar("id"))
 		}
 		fmt.Println(snippet.Source)
 	}
