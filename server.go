@@ -15,6 +15,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type State int
@@ -33,16 +35,19 @@ func GetSnippetsFromFile(file *os.File, filter filters.SnippetFilter) []*snippet
 	snip := snippet.NewSnippet()
 
 	scanner := bufio.NewScanner(file)
+	currentState = START
 
 	for scanner.Scan() {
 		untrimmed := scanner.Text()
 		trimmed := strings.Trim(untrimmed, " ")
 		if currentState == START {
 			if isFrontMatterString(trimmed) {
+				log.Debug("Found FM. Start parsing attributes")
 				currentState = FM
 			}
 		} else if currentState == FM {
 			if isFrontMatterString(trimmed) {
+				log.Debug("End of FM. Start parsing source")
 				currentState = SOURCE
 				sourceBuffer.Reset()
 			} else {
@@ -50,16 +55,20 @@ func GetSnippetsFromFile(file *os.File, filter filters.SnippetFilter) []*snippet
 
 				key := strings.Trim(tokens[0], " ")
 				value := strings.Trim(tokens[1], " ")
+				log.Debugf("%s: %s", key, value)
 
 				snip.AddVar(key, value)
 			}
 		} else if currentState == SOURCE {
 			if isFrontMatterString(trimmed) {
+				log.Debug("Found new snippet")
 				// new snip
 				currentState = FM
 				snip.Source = sourceBuffer.String()
 				if filter(snip) {
+					log.Debugf("Adding snippet: %s", snip.GetVar("id"))
 					snippets = append(snippets, snip)
+					log.Debugf("Snippetcount in file: %d", len(snippets))
 				}
 
 				snip = snippet.NewSnippet()
@@ -73,7 +82,9 @@ func GetSnippetsFromFile(file *os.File, filter filters.SnippetFilter) []*snippet
 	snip.Source = sourceBuffer.String()
 
 	if filter(snip) {
+		log.Debugf("Adding snippet: %s", snip.GetVar("id"))
 		snippets = append(snippets, snip)
+		log.Debugf("Snippetcount in file: %d", len(snippets))
 	}
 
 	return snippets
@@ -87,7 +98,7 @@ func processIDs(snippets []*snippet.Snippet) bool {
 	processed := false
 	for _, snippet := range snippets {
 		if snippet.GetVar("id") == "" {
-			fmt.Println("found snippet without id")
+			log.Debug("found snippet without id")
 			processed = true
 			nano := time.Now().UnixNano()
 			sum256 := sha256.Sum256([]byte(strconv.FormatInt(nano, 10)))
@@ -105,7 +116,7 @@ func processIDs(snippets []*snippet.Snippet) bool {
 // a line for every found snippet in the followign form:
 // <nr>: <snippet-ID>
 func createLastSearchFile(snipes []*snippet.Snippet, snipesserverDir string) {
-	lastSearchFile := snipesserverDir + "/.last"
+	lastSearchFile := snipesserverDir + "/last"
 	os.Remove(lastSearchFile)
 
 	file, _ := os.Create(lastSearchFile)
@@ -117,7 +128,7 @@ func createLastSearchFile(snipes []*snippet.Snippet, snipesserverDir string) {
 // getSnippetFromLastSearch queries the `lastSearch` file.
 // the client provides the number of the snippet-id, she wants to get
 func getSnippetFromLastSearch(nr int) *snippet.Snippet {
-	file, _ := os.Open(os.Getenv("HOME") + "/.snipeserver/.last")
+	file, _ := os.Open(os.Getenv("HOME") + "/.snipeserver/last")
 
 	scanner := bufio.NewScanner(file)
 
@@ -145,7 +156,8 @@ func snippetFinder(filter filters.SnippetFilter, excludeFile string) []*snippet.
 			if e != nil {
 				panic(e)
 			}
-			snippetsInFile := GetSnippetsFromFile(file, filter)
+			log.Debug("Getting all snippets for id processing")
+			snippetsInFile := GetSnippetsFromFile(file, filters.Wildcard())
 			if processIDs(snippetsInFile) == true {
 				// backup current snipes file
 				backupFile, _ := os.Create(path + ".bk")
@@ -162,8 +174,6 @@ func snippetFinder(filter filters.SnippetFilter, excludeFile string) []*snippet.
 				os.Remove(path)
 
 				// Write new snipes file with ids
-				// TODO: This is FATAL for it will populate the snipes file with found snipes *only*
-				// We have to somehow inject the id into the present snipes file. Maybe while processing the IDs??
 				newFile, err := os.Create(path)
 				if err != nil {
 					panic(err)
@@ -174,7 +184,13 @@ func snippetFinder(filter filters.SnippetFilter, excludeFile string) []*snippet.
 				newFile.Sync()
 				newFile.Close()
 			}
-			snippets = append(snippets, snippetsInFile...)
+			log.Debug("Now filtering snippets...")
+			for _, s := range snippetsInFile {
+				if filter(s) {
+					snippets = append(snippets, s)
+				}
+			}
+			log.Debugf("Found %d snippets in file %s", len(snippets), path)
 		}
 		return nil
 	})
@@ -193,15 +209,22 @@ func main() {
 	file := flag.String("file", "n/a", "the file to write the snippet to")
 	id := flag.String("id", "", "the id of the snippet")
 	nr := flag.String("nr", "", "the number from the last search to display")
+	verbose := flag.Bool("v", false, "show verbose logs")
+
+	printDesc := flag.Bool("pd", false, "print description")
 
 	flag.Parse()
+
+	if *verbose == true {
+		log.SetLevel(log.DebugLevel)
+	}
 
 	if len(flag.Args()) > 0 {
 		// positional arg
 		if flag.Args()[0] == "last" {
 			i, _ := strconv.Atoi(*nr)
 			snippet := getSnippetFromLastSearch(i)
-			fmt.Println(snippet.Source)
+			log.Debug(snippet.Source)
 			return
 		}
 	}
@@ -216,7 +239,7 @@ func main() {
 	filterFunctions := make([]filters.SnippetFilter, 0)
 
 	// default filter
-	filterFunctions = append(filterFunctions, func(snippet *snippet.Snippet) bool { return true })
+	filterFunctions = append(filterFunctions, filters.Wildcard())
 
 	if *id != "" {
 		filterFunctions = append(filterFunctions, filters.IdFilter(*id))
@@ -232,7 +255,7 @@ func main() {
 	snippets := snippetFinder(filters.FilterChain(filterFunctions), *exclude)
 
 	if *file != "n/a" && len(snippets) > 1 {
-		fmt.Println("Can not write snippet to file. More than 1 snippet found")
+		log.Debug("Can not write snippet to file. More than 1 snippet found")
 		return
 	}
 
@@ -243,10 +266,21 @@ func main() {
 		return
 	}
 
-	multipleSnippets := len(snippets) > 0
+	multipleSnippets := len(snippets) > 1
+	log.Debugf("Total snippets found %d", len(snippets))
 	for _, snippet := range snippets {
+		rulerNeeded := false
 		if multipleSnippets {
 			fmt.Printf("[%s]\n", snippet.GetVar("id"))
+			rulerNeeded = true
+		}
+		if *printDesc {
+			fmt.Printf("description: %s \n", snippet.GetVar("description"))
+			rulerNeeded = true
+		}
+
+		if rulerNeeded {
+			fmt.Println("------")
 		}
 		fmt.Println(snippet.Source)
 	}

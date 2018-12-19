@@ -56,3 +56,10 @@ func TagFilter(filtertags []string) SnippetFilter {
 		return false
 	}
 }
+
+// Wildcard creates a filter that lett all snippets slip through
+func Wildcard() SnippetFilter {
+	return func(snippet *snippet.Snippet) bool {
+		return true
+	}
+}
