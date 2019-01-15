@@ -59,8 +59,12 @@ func getSnippetFromLastSearch(nr int) *snippet.Snippet {
 
 	for scanner.Scan() {
 		split := strings.Split(scanner.Text(), ":")
+		if len(split) != 2 {
+			panic("Could not extract id from last seeach")
+		}
 		i, _ := strconv.Atoi(split[0])
 		if i == nr {
+			log.Debugf("Snippet nr %s has id %s", split[0], split[1])
 			snippets := snippetFinder(filters.IdFilter(strings.Trim(split[1], " ")), "")
 			return snippets[0]
 		}
@@ -133,7 +137,7 @@ func main() {
 	tags := flag.String("tag", "", "the tag to filter for")
 	file := flag.String("file", "n/a", "the file to write the snippet to")
 	id := flag.String("id", "", "the id of the snippet")
-	nr := flag.String("nr", "", "the number from the last search to display")
+	nr := flag.Int("nr", -1, "the number from the last search to display")
 	verbose := flag.Bool("v", false, "show verbose logs")
 
 	printDesc := flag.Bool("pd", false, "print description")
@@ -147,9 +151,8 @@ func main() {
 	if len(flag.Args()) > 0 {
 		// positional arg
 		if flag.Args()[0] == "last" {
-			i, _ := strconv.Atoi(*nr)
-			snippet := getSnippetFromLastSearch(i)
-			log.Debug(snippet.Source)
+			snippet := getSnippetFromLastSearch(*nr)
+			fmt.Println(snippet.Source)
 			return
 		}
 	}
