@@ -157,12 +157,7 @@ func main() {
 		}
 	}
 
-	// create snipesserver dir in users home if needed
-	snipeserverDir := os.Getenv("HOME") + "/.snipeserver"
-	_, e := os.Stat(snipeserverDir)
-	if os.IsNotExist(e) {
-		os.Mkdir(snipeserverDir, os.ModePerm)
-	}
+	appDir := getApplicationDirOrCreateIfNeeded()
 
 	filterFunctions := make([]filters.SnippetFilter, 0)
 
@@ -213,5 +208,16 @@ func main() {
 		fmt.Println(snippet.Source)
 	}
 
-	createLastSearchFile(snippets, snipeserverDir)
+	createLastSearchFile(snippets, appDir)
+}
+
+func getApplicationDirOrCreateIfNeeded() string {
+	snipeserverDir := os.Getenv("HOME") + "/.snipeserver"
+	_, e := os.Stat(snipeserverDir)
+	if os.IsNotExist(e) {
+		os.Mkdir(snipeserverDir, os.ModePerm)
+	}
+
+	return snipeserverDir
+
 }
