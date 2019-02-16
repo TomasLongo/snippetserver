@@ -189,6 +189,13 @@ func main() {
 		return
 	}
 
+	createOutput(snippets, *printDesc)
+
+	createLastSearchFile(snippets, appDir)
+}
+
+// createOutput outputs the result of the query to std-out
+func createOutput(snippets []*snippet.Snippet, printDescription bool) {
 	multipleSnippets := len(snippets) > 1
 	log.Debugf("Total snippets found %d", len(snippets))
 	for _, snippet := range snippets {
@@ -197,7 +204,7 @@ func main() {
 			fmt.Printf("[%s]\n", snippet.GetVar("id"))
 			rulerNeeded = true
 		}
-		if *printDesc {
+		if printDescription {
 			fmt.Printf("description: %s \n", snippet.GetVar("description"))
 			rulerNeeded = true
 		}
@@ -207,8 +214,6 @@ func main() {
 		}
 		fmt.Println(snippet.Source)
 	}
-
-	createLastSearchFile(snippets, appDir)
 }
 
 func getApplicationDirOrCreateIfNeeded() string {
