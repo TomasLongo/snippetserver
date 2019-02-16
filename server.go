@@ -60,7 +60,7 @@ func getSnippetFromLastSearch(nr int) *snippet.Snippet {
 	for scanner.Scan() {
 		split := strings.Split(scanner.Text(), ":")
 		if len(split) != 2 {
-			panic("Could not extract id from last seeach")
+			panic("Could not extract id from last search")
 		}
 		i, _ := strconv.Atoi(split[0])
 		if i == nr {
@@ -182,12 +182,12 @@ func main() {
 
 	snippets := snippetFinder(filters.FilterChain(filterFunctions), *exclude)
 
-	if *file != "n/a" && len(snippets) > 1 {
-		log.Debug("Can not write snippet to file. More than 1 snippet found")
-		return
-	}
-
 	if *file != "n/a" {
+		if len(snippets) > 1 {
+			log.Info("Will only write to file if query results in **exactly** one snippet")
+			return
+		}
+
 		fs, _ := os.Create(*file)
 		defer fs.Close()
 		fs.WriteString(snippets[0].Source)
