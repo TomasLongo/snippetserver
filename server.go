@@ -19,6 +19,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// processIDs checks if the provided array of snippets contains snippets
+// with missing id and provides one if needed.
 func processIDs(snippets []*snippet.Snippet) bool {
 	processed := false
 	for _, snippet := range snippets {
@@ -87,6 +89,8 @@ func snippetFinder(filter filters.SnippetFilter, excludeFile string) []*snippet.
 			}
 			log.Debug("Getting all snippets for id processing")
 			snippetsInFile := snipesparsing.ParseSnipe(file, filters.Wildcard())
+
+			// TODO check if we really need to check for new snippets. Maybe via file-timestamp
 			if processIDs(snippetsInFile) == true {
 				// backup current snipes file
 				backupFile, _ := os.Create(path + ".bk")
@@ -151,6 +155,10 @@ func main() {
 	if len(flag.Args()) > 0 {
 		// positional arg
 		if flag.Args()[0] == "last" {
+			if *nr == -1 {
+				fmt.Println("As of now, the last search feature is only usable when provided a specific number which denotes the item to output")
+				return
+			}
 			snippet := getSnippetFromLastSearch(*nr)
 			fmt.Println(snippet.Source)
 			return
@@ -176,6 +184,8 @@ func main() {
 	}
 
 	snippets := snippetFinder(filters.FilterChain(filterFunctions), *exclude)
+
+	// TODO create function 'handleQueryResult' where the query result is processed
 
 	if *file != "n/a" {
 		if len(snippets) > 1 {
