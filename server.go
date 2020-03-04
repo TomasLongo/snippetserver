@@ -141,7 +141,7 @@ func main() {
 	tags := flag.String("tag", "", "the tag to filter for")
 	file := flag.String("file", "n/a", "the file to write the snippet to")
 	id := flag.String("id", "", "the id of the snippet")
-	nr := flag.Int("nr", -1, "the number from the last search to display")
+	nr := flag.Int("nr", -1, "the number from the last search to display. Use it with the `last` command")
 	verbose := flag.Bool("v", false, "show verbose logs")
 
 	printDesc := flag.Bool("pd", false, "print description")

@@ -40,20 +40,25 @@ func IdFilter(id string) SnippetFilter {
 	}
 }
 
-// TagFilter creates a filter that filters a snippet based on its `tag` property
+// TagFilter creates a filter that filters a snippet based on its `tag` property.
+// As for now, the logic implemented is AND, e.g. a snippet passes the filter if
+// it contains every tag in `filtertags`
 func TagFilter(filtertags []string) SnippetFilter {
 	return func(snippet *snippet.Snippet) bool {
 		tags := snippet.GetVar("tags")
-		// Implement OR-Logic
+		set := make(map[string]struct{})
 		for _, tag := range strings.Split(tags, ",") {
-			for _, filterTag := range filtertags {
-				if filterTag == tag {
-					return true
-				}
+			set[tag] = struct{}{}
+		}
+
+		for _, filterTag := range filtertags {
+			_, present := set[filterTag]
+			if present == false {
+				return false
 			}
 		}
 
-		return false
+		return true
 	}
 }
 
